@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>RWA 不動產代幣化 — 真功能 API Demo · 後端即時運算</title>
+<style>
+:root{
+  --bg:#1a2b4c; --bg-2:#142039; --panel:#21345a; --panel-2:#2a3f6b; --line:#34507f;
+  --ink:#ccff99; --ink-dim:#9fc97a; --muted:#8aa0c4;
+  --accent:#4fd1ff; --teal:#66ffcc; --green:#6cf08a; --amber:#ffcc66; --red:#ff6f7d;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+  --sans:system-ui,-apple-system,"Segoe UI","Microsoft JhengHei","PingFang TC",sans-serif;
+}
+*{box-sizing:border-box;}
+html,body{margin:0;min-height:100%;}
+body{font-family:var(--sans);color:var(--ink);line-height:1.55;min-height:100vh;
+  background:radial-gradient(1200px 600px at 18% -12%,#213865 0,var(--bg) 60%),var(--bg);}
+button,input,select{font:inherit;} button{cursor:pointer;} a{color:var(--accent);}
+.app{max-width:1180px;margin:0 auto;padding:20px 18px 40px;}
+.topbar{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;
+  border:1px solid var(--line);border-radius:14px;padding:15px 18px;
+  background:linear-gradient(180deg,rgba(33,52,90,.92),rgba(20,32,57,.92));box-shadow:0 18px 40px rgba(0,0,0,.35);}
+.brand{display:flex;align-items:center;gap:13px;}
+.mark{width:46px;height:46px;border-radius:11px;display:grid;place-items:center;color:#0b1626;
+  background:linear-gradient(135deg,var(--ink),var(--accent));font-weight:900;font-family:var(--mono);}
+h1{margin:0;font-size:19px;letter-spacing:.4px;}
+.sub{color:var(--muted);font-size:12px;margin-top:3px;}
+.pill{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:999px;
+  padding:7px 13px;color:var(--green);background:rgba(108,240,138,.08);font:700 12px/1 var(--mono);}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 0 4px rgba(108,240,138,.18);}
+.back{font-size:12.5px;color:var(--muted);text-decoration:none;}
+.panel{border:1px solid var(--line);border-radius:14px;margin-top:16px;
+  background:linear-gradient(180deg,rgba(33,52,90,.85),rgba(20,32,57,.85));}
+.head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 17px;border-bottom:1px solid var(--line);}
+.head h2{margin:0;font-size:15.5px;} .en{font:400 11px var(--mono);color:var(--muted);letter-spacing:.4px;text-transform:uppercase;}
+.body{padding:16px 17px;}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;}
+.btn{border:1px solid var(--line);border-radius:10px;background:rgba(20,32,57,.6);color:var(--ink);
+  min-height:40px;padding:9px 16px;font-weight:800;transition:.15s transform,.15s border-color;}
+.btn:hover{transform:translateY(-1px);border-color:var(--ink-dim);}
+.btn.primary{background:linear-gradient(135deg,var(--ink),var(--ink-dim));color:#0b1626;border-color:transparent;}
+.btn.sm{min-height:0;padding:5px 11px;font-size:12.5px;border-radius:8px;}
+select.btn{cursor:pointer;}
+.grid{display:grid;gap:12px;} .cols-4{grid-template-columns:repeat(4,1fr);} .cols-3{grid-template-columns:repeat(3,1fr);}
+@media (max-width:760px){.cols-4{grid-template-columns:repeat(2,1fr);} .cols-3{grid-template-columns:1fr;}}
+.stat{border:1px solid var(--line);border-radius:10px;padding:13px;background:var(--bg-2);}
+.stat .l{color:var(--muted);font:11px var(--mono);text-transform:uppercase;letter-spacing:.5px;}
+.stat .v{font-size:21px;font-weight:900;margin-top:5px;font-family:var(--mono);}
+.stat .s{color:var(--muted);font-size:12px;margin-top:3px;}
+table{width:100%;border-collapse:collapse;font-size:13px;}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);}
+th{color:var(--muted);font:700 11px var(--mono);text-transform:uppercase;letter-spacing:.4px;}
+td.num,th.num{text-align:right;font-family:var(--mono);}
+.badge{display:inline-flex;align-items:center;padding:3px 8px;border-radius:6px;font:700 11px var(--mono);border:1px solid transparent;}
+.badge.good{color:var(--green);background:rgba(108,240,138,.1);border-color:rgba(108,240,138,.4);}
+.badge.warn{color:var(--amber);background:rgba(255,204,102,.1);border-color:rgba(255,204,102,.4);}
+.badge.bad{color:var(--red);background:rgba(255,111,125,.1);border-color:rgba(255,111,125,.4);}
+.alert{border:1px solid var(--green);border-radius:10px;padding:13px;background:rgba(108,240,138,.08);margin-top:12px;}
+.hash{color:var(--accent);word-break:break-all;font-family:var(--mono);font-size:12px;}
+.empty{color:var(--muted);font-size:13px;padding:10px 0;}
+.disc{margin-top:18px;font-size:11.5px;color:var(--amber);background:rgba(255,204,102,.07);
+  border-left:3px solid var(--amber);border-radius:0 8px 8px 0;padding:11px 13px;line-height:1.6;}
+.reco{display:flex;gap:10px;align-items:center;padding:9px 11px;border:1px solid var(--line);border-radius:10px;margin-bottom:7px;}
+.reco.top{border-color:var(--green);} .reco .rk{width:20px;opacity:.6;text-align:center;font-family:var(--mono);}
+.reco .nm{flex:1;} .reco .sc{width:56px;text-align:right;}
+footer{color:var(--muted);font-size:11px;text-align:center;margin-top:24px;}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="topbar">
+    <div class="brand">
+      <div class="mark">RWA</div>
+      <div>
+        <h1>RWA 不動產代幣化 · 真功能 API Demo</h1>
+        <div class="sub">真功能 · 後端即時運算 (Vercel Python Serverless · FastAPI) · 數值非寫死</div>
+      </div>
+    </div>
+    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+      <span class="pill"><span class="dot"></span> <span id="apiStatus">連線中…</span></span>
+      <a class="back" href="/">← 回原型 (prototype)</a>
+    </div>
+  </div>
+
+  <!-- ① 投資人適配推薦 -->
+  <section class="panel">
+    <div class="head"><h2>① 投資人適配推薦</h2><span class="en">POST /api/recommend</span></div>
+    <div class="body">
+      <div class="row">
+        <select class="btn" id="profile">
+          <option value="保守">風險屬性：保守型</option>
+          <option value="穩健" selected>風險屬性：穩健型</option>
+          <option value="積極">風險屬性：積極型</option>
+        </select>
+        <button class="btn primary" id="runReco">依風險屬性排序資產</button>
+        <span class="en" id="recoMeta"></span>
+      </div>
+      <div id="recoBody" style="margin-top:13px;"><div class="empty">選擇風險屬性後，後端即時計算各資產適配分數並排序，每列附 PDF 報告連結。</div></div>
+    </div>
+  </section>
+
+  <!-- ② 標的估值 + 代幣化分割 -->
+  <section class="panel">
+    <div class="head"><h2>② 主標的估值與 ERC-20 分割參數</h2><span class="en">GET /api/asset · POST /api/tokenize</span></div>
+    <div class="body">
+      <div class="row">
+        <button class="btn primary" id="runAsset">取得估值 (信義之星)</button>
+        <button class="btn" id="runToken">代幣化分割 + PoR 勾稽</button>
+        <a class="btn sm" id="reportBtn" href="/api/report/XYRE-001" target="_blank">一鍵下載 PDF 報告</a>
+      </div>
+      <div id="assetBody" style="margin-top:13px;"></div>
+      <div id="tokenBody" style="margin-top:13px;"></div>
+    </div>
+  </section>
+
+  <div class="disc" id="disc"></div>
+  <footer>RWA 不動產代幣化 PoC · 上鏈 / Oracle / KYC / 智能合約配息皆為模擬示意 (非真實上鏈) · 數值由後端即時運算</footer>
+</div>
+
+<script>
+const $=s=>document.querySelector(s);
+function esc(s){return String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+function fmt(n){return (n===null||n===undefined||Number.isNaN(Number(n)))?'N/A':Number(n).toLocaleString('en-US');}
+async function api(path,body){
+  const opt=body?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{};
+  const res=await fetch(path,opt);
+  if(!res.ok){const e=await res.json().catch(()=>({detail:res.statusText}));throw new Error(e.detail||'API error');}
+  return res.json();
+}
+
+// 健康檢查
+(async()=>{
+  try{const h=await api('/api/health');$('#apiStatus').textContent=h.ok?'後端即時運算 · 連線正常':'狀態異常';}
+  catch(e){$('#apiStatus').textContent='後端未連線 (本機需啟動 /api)';}
+})();
+
+// ① 推薦
+$('#runReco').addEventListener('click',async()=>{
+  $('#recoBody').innerHTML='<div class="empty">運算中…</div>';
+  try{
+    const profile=$('#profile').value;
+    const d=await api('/api/recommend',{profile});
+    $('#recoMeta').textContent=`首選 ${d.top_pick.asset_name}（適配 ${d.top_pick.fit_score}）`;
+    $('#recoBody').innerHTML=d.ranked.map((x,i)=>`
+      <div class="reco ${i===0?'top':''}">
+        <span class="rk">${i+1}</span>
+        <span class="nm"><b>${esc(x.asset_name)}</b>
+          <span class="s" style="color:var(--muted)"> · 評級 ${esc(x.grade)} · 配息 ${x.annual_yield_pct}% · PD ${x.pd_pct}% · 最低 NT$ ${fmt(x.min_investment)}${(x.notes&&x.notes.length)?' · ⚠ '+esc(x.notes[0]):''}</span>
+        </span>
+        <span class="sc"><b style="color:var(--green)">${x.fit_score}</b></span>
+        <a class="btn sm" href="/api/report/${encodeURIComponent(x.asset_id)}" target="_blank">PDF</a>
+      </div>`).join('')+
+      `<p class="s" style="color:var(--muted);margin-top:8px">適配分數＝評級／安全／配息／流動性 依風險屬性加權之後端真實運算（每列右側可一鍵下載該資產 PDF 報告）。</p>`;
+    setDisc(d.compliance_disclaimer);
+  }catch(e){$('#recoBody').innerHTML=`<div class="empty">失敗：${esc(e.message)}</div>`;}
+});
+
+// ② 估值
+$('#runAsset').addEventListener('click',async()=>{
+  $('#assetBody').innerHTML='<div class="empty">運算中…</div>';
+  try{
+    const d=await api('/api/asset');const v=d.valuation;
+    $('#assetBody').innerHTML=`
+      <div class="grid cols-4">
+        <div class="stat"><div class="l">公允估值</div><div class="v">${fmt(v.fair_value)}</div><div class="s">市場可比 (Oracle 餵價)</div></div>
+        <div class="stat"><div class="l">NOI 淨營運收入</div><div class="v">${fmt(v.noi)}</div><div class="s">年毛租 − 管理稅費</div></div>
+        <div class="stat"><div class="l">現金殖利率</div><div class="v">${v.cash_yield_pct}%</div><div class="s">NOI / 估值 真算</div></div>
+        <div class="stat"><div class="l">出租率</div><div class="v">${(v.occupancy_rate*100).toFixed(0)}%</div><div class="s">每坪 ${fmt(v.oracle_unit_price_per_ping)}</div></div>
+      </div>`;
+    setDisc(d.compliance_disclaimer);
+  }catch(e){$('#assetBody').innerHTML=`<div class="empty">失敗：${esc(e.message)}</div>`;}
+});
+
+// ② 代幣化
+$('#runToken').addEventListener('click',async()=>{
+  $('#tokenBody').innerHTML='<div class="empty">運算中…</div>';
+  try{
+    const d=await api('/api/tokenize',{});const t=d.tokenization,r=d.proof_of_reserve;
+    $('#tokenBody').innerHTML=`
+      <div class="grid cols-4">
+        <div class="stat"><div class="l">發行總量</div><div class="v">${fmt(t.total_supply)}</div><div class="s">${esc(t.fraction_per_token)}</div></div>
+        <div class="stat"><div class="l">單位價格</div><div class="v">${fmt(t.token_unit_price)}</div><div class="s">NAV ${fmt(t.implied_nav_per_token)}</div></div>
+        <div class="stat"><div class="l">最低投資</div><div class="v">${fmt(t.min_investment)}</div><div class="s">${fmt(t.min_invest_units)} 枚起</div></div>
+        <div class="stat"><div class="l">PoR 覆蓋率</div><div class="v">${(r.coverage_ratio*100).toFixed(0)}%</div><div class="s">${esc(r.status)}</div></div>
+      </div>
+      <div class="alert">
+        <b>${r.over_issued?'⚠ 超額發行':'✓ Proof-of-Reserve 勾稽通過'}</b>
+        <span class="badge ${r.over_issued?'bad':'good'}">${esc(r.status)}</span>
+        <div style="margin-top:6px;color:var(--muted);font-size:12.5px">${esc(r.message)}</div>
+        <div style="margin-top:8px">模擬 mint 交易雜湊：<span class="hash">${esc(t.mint_tx_hash)}</span> <span class="badge good">${esc(t.mint_status)}</span></div>
+      </div>`;
+    setDisc(d.compliance_disclaimer);
+  }catch(e){$('#tokenBody').innerHTML=`<div class="empty">失敗：${esc(e.message)}</div>`;}
+});
+
+function setDisc(t){if(t)$('#disc').textContent='※ '+t;}
+</script>
+</body>
+</html>

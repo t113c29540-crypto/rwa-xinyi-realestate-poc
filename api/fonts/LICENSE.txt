@@ -1,0 +1,3 @@
+jf open 粉圓 (jf-openhuninn) — justfont 開源字型，繁體中文 TrueType。
+來源：https://github.com/justfont/open-huninn-font （開源、可商用）。
+本 PoC 內嵌此字型供伺服器端產生繁中 PDF 報告。

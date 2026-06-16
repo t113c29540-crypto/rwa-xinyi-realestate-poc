@@ -2,11 +2,13 @@
 
 「信義之星 XYRE」不動產分割代幣化與收益分配 PoC。本 repo 同時部署**互動原型（靜態）**＋**真功能後端（Python Serverless）**，部署後即為可點擊、可即時運算的完整 demo。
 
-| 路徑 | 內容 |
-|---|---|
-| `/`（`index.html`） | 五頁式互動原型：標的上架/Oracle → ERC-20 分割發行/PoR → 白名單認購 → 自動租金分配 → ROI 視覺化（純前端、可獨立展示） |
-| `/app`（`app.html`） | 呼叫即時 API 的護眼 UI（估值、PoR 對帳、代幣化、租金分配、ROI、投資人適配推薦、一鍵 PDF 報告） |
-| `/api/*`（`api/index.py`） | FastAPI（純 Python、無 pandas/numpy），ASGI app 由 Vercel Python Runtime 託管 |
+| 路徑 | 檔案 | 內容 |
+|---|---|---|
+| `/` | `public/index.html` | 五頁式互動原型：標的上架/Oracle → ERC-20 分割發行/PoR → 白名單認購 → 自動租金分配 → ROI 視覺化（純前端、可獨立展示） |
+| `/app` | `public/app.html` | 呼叫即時 API 的護眼 UI（估值、PoR 對帳、代幣化、租金分配、ROI、投資人適配推薦、一鍵 PDF 報告） |
+| `/api/*` | `api/index.py` | FastAPI（純 Python、無 pandas/numpy），ASGI app 由 Vercel Python Runtime 託管 |
+
+> 結構：靜態檔放 `public/`（Vercel 靜態輸出根）、Serverless 函式放 `api/`、`vercel.json` 把 `/api/*` rewrite 到單一函式。此為 Vercel「靜態站 + Python 函式」標準結構。
 
 ### API 端點
 - `GET /api/health`

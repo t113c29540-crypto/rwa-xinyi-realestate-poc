@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import Body, FastAPI, HTTPException
-from fastapi.responses import Response
+from fastapi.responses import HTMLResponse, Response
 
 
 # ---------------------------------------------------------------------------
@@ -791,9 +791,33 @@ def build_report_pdf(asset_id: str) -> bytes:
 
 
 # ===========================================================================
-# FastAPI app — 僅處理 /api/*；Vercel ASGI 以 `app` 變數偵測
+# FastAPI app — 服務全站 (/、/app、/api/*)；Vercel ASGI 以 `app` 變數偵測。
+# Vercel 將整個專案視為 Python 應用、把所有路由導到本函式，故由 FastAPI
+# 統一服務靜態頁與 API，避免根路徑 `/` 的靜態解析邊界問題。
 # ===========================================================================
 app = FastAPI(title="RWA 不動產代幣化 PoC — Vercel Serverless (真功能)")
+
+_STATIC_DIR = Path(__file__).resolve().parent / "static"
+
+
+def _load_static(name: str) -> str:
+    """讀取與函式同捆的靜態 HTML (api/static/，同 fonts/ 一併打包)。"""
+    try:
+        return (_STATIC_DIR / name).read_text(encoding="utf-8")
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail=f"找不到頁面 {name}")
+
+
+@app.get("/", response_class=HTMLResponse)
+def home() -> HTMLResponse:
+    """互動原型 (五頁式 PoC)。"""
+    return HTMLResponse(_load_static("index.html"))
+
+
+@app.get("/app", response_class=HTMLResponse)
+def app_ui() -> HTMLResponse:
+    """呼叫即時 API 的護眼操作介面。"""
+    return HTMLResponse(_load_static("app.html"))
 
 
 @app.get("/api/health")

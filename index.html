@@ -1,0 +1,923 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>信義地產通 XinyiRealEstate — 不動產分割代幣化與收益分配平台 / Fractional Real-Estate Tokenization — PoC</title>
+<style>
+/* =========================================================================
+   主題 / Theme — 深藍交易終端 #1a2b4c + 主文字淡綠 #ccff99,console / terminal 風格
+   Deep-navy trading-terminal base, light-green accent. 繁中 / EN bilingual.
+   純前端、零外部相依;字型一律使用系統字型,離線即可開啟(雙擊即用)。
+   Pure front-end, zero dependencies; system fonts only, opens offline.
+   ‧ 本檔沿用 RWA 系列(題目05 / POC_prototype)整套 CSS 主題、元件與
+     goStep/unlock 五頁狀態機、事件委派(支援 reset)、ripple、toast,使全系列同風格。
+   ‧ 產品:信義地產通 XinyiRealEstate(代幣 XYRE)。標的:信義之星一戶
+     80 坪 / NT$4.8 億 / 月租 60 萬。所有上鏈、Oracle、KYC、mint 皆為模擬示意。
+   ‧ 四大亮點:① proof-of-reserve 防超發 ② 白名單轉讓限制 ③ 自動租金分配 ④ ROI 圖表
+   ========================================================================= */
+:root{
+  --bg:#1a2b4c; --bg-2:#142039; --panel:#21345a; --panel-2:#2a3f6b; --line:#34507f;
+  --ink:#ccff99; --ink-dim:#9fc97a; --muted:#8aa0c4;
+  --teal:#66ffcc; --yellow:#ffff99; --orange:#ffcc66; --red:#ff6666;
+  --mono:ui-monospace,'SFMono-Regular',Menlo,Consolas,'Courier New',monospace;
+  --sans:system-ui,-apple-system,'Segoe UI','Microsoft JhengHei','PingFang TC','Noto Sans TC','Heiti TC',sans-serif;
+}
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+body{
+  font-family:var(--sans); color:var(--ink); line-height:1.55; min-height:100vh;
+  -webkit-font-smoothing:antialiased;
+  background:
+    radial-gradient(1200px 600px at 80% -10%, rgba(102,255,204,.08), transparent 60%),
+    radial-gradient(900px 500px at -10% 110%, rgba(204,255,153,.06), transparent 60%),
+    var(--bg);
+  background-attachment:fixed;
+}
+body::before{
+  content:"";position:fixed;inset:0;pointer-events:none;z-index:0;
+  background-image:linear-gradient(rgba(52,80,127,.18) 1px,transparent 1px),linear-gradient(90deg,rgba(52,80,127,.18) 1px,transparent 1px);
+  background-size:46px 46px; mask-image:radial-gradient(80% 80% at 50% 30%,#000 40%,transparent 100%); opacity:.5;
+}
+.wrap{position:relative;z-index:1;max-width:1080px;margin:0 auto;padding:22px 20px 60px;overflow-x:hidden;}
+
+/* 頂部 / top bar */
+.topbar{display:flex;align-items:center;gap:14px;flex-wrap:wrap;border:1px solid var(--line);border-radius:14px;
+  background:linear-gradient(180deg,rgba(33,52,90,.9),rgba(20,32,57,.9));padding:14px 18px;box-shadow:0 18px 40px rgba(0,0,0,.35);}
+.logo{width:42px;height:42px;border-radius:10px;flex:0 0 auto;display:grid;place-items:center;
+  background:radial-gradient(circle at 30% 30%,rgba(204,255,153,.25),rgba(102,255,204,.12));border:1px solid var(--teal);
+  box-shadow:0 0 22px rgba(102,255,204,.25);font-family:var(--mono);font-weight:700;color:var(--teal);}
+.title h1{font-size:18px;margin:0;font-weight:900;letter-spacing:.3px;}
+.title .sub{font-family:var(--mono);font-size:11px;color:var(--muted);letter-spacing:.5px;text-transform:uppercase;}
+.badge{margin-left:auto;font-family:var(--mono);font-size:11px;letter-spacing:.6px;color:var(--teal);border:1px solid var(--teal);
+  border-radius:999px;padding:6px 12px;display:flex;align-items:center;gap:7px;background:rgba(102,255,204,.07);}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--teal);box-shadow:0 0 10px var(--teal);animation:pulse 1.6s infinite;}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+
+/* 步驟列 / stepper (5 pages) */
+.stepper{display:flex;gap:10px;margin:20px 0;flex-wrap:wrap;}
+.step{flex:1 1 170px;min-width:150px;border:1px solid var(--line);border-radius:12px;padding:11px 13px;background:rgba(20,32,57,.55);
+  cursor:pointer;transition:.25s transform,.25s border-color,.25s background;}
+.step:hover{transform:translateY(-2px);border-color:var(--ink-dim);}
+.step .n{font-family:var(--mono);font-size:11px;color:var(--muted);}
+.step .t{font-size:13px;font-weight:700;margin-top:3px;}
+.step .e{font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:.3px;}
+.step.active{border-color:var(--ink);background:linear-gradient(180deg,rgba(204,255,153,.12),rgba(33,52,90,.5));box-shadow:0 0 0 1px rgba(204,255,153,.25) inset,0 10px 26px rgba(0,0,0,.3);}
+.step.active .n,.step.active .e{color:var(--ink-dim);} .step.done .n{color:var(--teal);} .step.locked{opacity:.45;cursor:not-allowed;}
+
+/* 卡片 / panels */
+.panel{border:1px solid var(--line);border-radius:16px;background:linear-gradient(180deg,rgba(33,52,90,.85),rgba(20,32,57,.85));
+  padding:22px;box-shadow:0 16px 40px rgba(0,0,0,.32);}
+.eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:1.4px;text-transform:uppercase;color:var(--teal);}
+.h2{font-size:20px;font-weight:900;margin:4px 0 2px;} .lead{color:var(--muted);font-size:13.5px;margin:0 0 16px;}
+.secttl{font-weight:800;font-size:15px;margin:18px 0 10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+.secttl .en{font-family:var(--mono);font-size:11px;color:var(--muted);font-weight:400;letter-spacing:.4px;text-transform:uppercase;}
+
+.view{display:none;} .view.show{display:block;animation:rise .5s cubic-bezier(.2,.7,.2,1) both;}
+@keyframes rise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+.stag>*{opacity:0;animation:rise .5s cubic-bezier(.2,.7,.2,1) forwards;}
+.stag>*:nth-child(1){animation-delay:.04s}.stag>*:nth-child(2){animation-delay:.1s}.stag>*:nth-child(3){animation-delay:.16s}
+.stag>*:nth-child(4){animation-delay:.22s}.stag>*:nth-child(5){animation-delay:.28s}.stag>*:nth-child(6){animation-delay:.34s}
+
+/* 按鈕 / buttons */
+.btnrow{display:flex;gap:12px;flex-wrap:wrap;margin-top:20px;align-items:center;}
+.btn{font-family:var(--sans);font-weight:700;font-size:14px;border-radius:11px;cursor:pointer;padding:12px 20px;border:1px solid var(--line);
+  background:rgba(20,32,57,.6);color:var(--ink);position:relative;overflow:hidden;transition:.18s transform,.18s box-shadow,.18s border-color;}
+.btn:hover{transform:translateY(-2px);border-color:var(--ink-dim);} .btn:active{transform:translateY(0);}
+.btn.primary{background:linear-gradient(180deg,var(--ink),#a9e070);color:#10331a;border-color:var(--ink);box-shadow:0 12px 26px rgba(204,255,153,.2);}
+.btn.primary:hover{box-shadow:0 16px 34px rgba(204,255,153,.32);} .btn:disabled{opacity:.4;cursor:not-allowed;transform:none;}
+.btn.ghost{background:transparent;} .btn.sm{padding:8px 14px;font-size:12.5px;border-radius:9px;}
+.btn.warn{background:linear-gradient(180deg,var(--orange),#e0a949);color:#3a2c08;border-color:var(--orange);}
+.ripple{position:absolute;border-radius:50%;transform:scale(0);background:rgba(255,255,255,.35);animation:rip .6s linear;pointer-events:none;}
+@keyframes rip{to{transform:scale(2.6);opacity:0}}
+.hint{font-family:var(--mono);font-size:11.5px;color:var(--muted);}
+
+/* ============ 頁面一 / Page 1 — 標的上架與 Oracle 估值 ============ */
+.cases{display:grid;gap:12px;margin-top:4px;}
+.crow{display:grid;grid-template-columns:1.6fr 1fr 1fr auto;gap:14px;align-items:center;border:1px solid var(--line);border-radius:13px;
+  padding:14px 16px;background:rgba(20,32,57,.55);transition:.22s transform,.22s border-color,.22s box-shadow;}
+@media(max-width:720px){.crow{grid-template-columns:1fr 1fr;}}
+.crow.actionable{cursor:pointer;}
+.crow.actionable:hover{transform:translateY(-3px);border-color:var(--ink-dim);box-shadow:0 12px 28px rgba(0,0,0,.32);}
+.crow.sel{border-color:var(--ink);box-shadow:0 0 0 1px var(--ink) inset;background:linear-gradient(180deg,rgba(204,255,153,.1),rgba(20,32,57,.6));}
+.crow .co{font-weight:800;font-size:14.5px;} .crow .co small{display:block;font-family:var(--mono);font-size:11px;color:var(--muted);}
+.crow .lab{font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:.3px;text-transform:uppercase;}
+.crow .v{font-family:var(--mono);font-size:13px;}
+.stbadge{font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:.3px;padding:5px 11px;border-radius:999px;white-space:nowrap;display:inline-flex;align-items:center;gap:6px;}
+.st-pending{color:#3a2c08;background:var(--orange);} .st-ready{color:#10331a;background:var(--teal);}
+.st-analyzing{color:var(--ink);background:rgba(102,255,204,.12);border:1px solid var(--teal);}
+.miniprog{width:54px;height:5px;border-radius:99px;background:rgba(138,160,196,.25);overflow:hidden;display:inline-block;vertical-align:middle;}
+.miniprog>i{display:block;height:100%;background:var(--teal);box-shadow:0 0 8px var(--teal);}
+.cta{font-family:var(--mono);font-size:11px;color:var(--ink);}
+
+/* 標的規格卡 / asset spec cards */
+.specgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:4px;}
+@media(max-width:680px){.specgrid{grid-template-columns:repeat(2,1fr);}}
+@media(max-width:380px){.specgrid{grid-template-columns:1fr;}}
+.spec{border:1px solid var(--line);border-radius:12px;padding:12px 14px;background:rgba(20,32,57,.5);}
+.spec .sl{font-family:var(--mono);font-size:10px;letter-spacing:.3px;text-transform:uppercase;color:var(--muted);}
+.spec .sv{font-family:var(--mono);font-size:18px;font-weight:700;margin-top:5px;color:var(--ink);}
+.spec .sd{font-size:11px;color:var(--muted);margin-top:3px;}
+
+/* Oracle 餵價列 / oracle feed rows */
+.oracle{display:grid;gap:9px;}
+.orow{display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:11px;padding:10px 13px;background:rgba(20,32,57,.5);font-family:var(--mono);font-size:12px;flex-wrap:wrap;}
+.orow .on{font-weight:700;color:var(--ink);} .orow .ov{color:var(--ink-dim);} .orow .ot{color:var(--muted);margin-left:auto;}
+.orow .opending{color:var(--orange);}
+
+/* 資料載入區 / data intake zone */
+.upload{margin-top:18px;border:1.6px dashed var(--line);border-radius:14px;padding:24px 18px;text-align:center;background:rgba(20,32,57,.4);transition:.25s;}
+.upload.ready{border-color:var(--ink);background:rgba(204,255,153,.06);cursor:pointer;}
+.upload.ready:hover{background:rgba(204,255,153,.1);}
+.upload .ico{font-size:30px;} .upload .big{font-weight:700;font-size:14px;margin-top:8px;}
+.upload .fmt{font-family:var(--mono);font-size:11px;color:var(--ink-dim);margin-top:6px;}
+.upload.disabled{opacity:.55;} .upload .lock{font-family:var(--mono);font-size:11px;color:var(--muted);}
+.uprog{display:none;max-width:460px;margin:10px auto 0;}
+.uprog .lbl{font-family:var(--mono);font-size:12.5px;color:var(--teal);margin-bottom:8px;}
+.bar{height:9px;border-radius:99px;background:rgba(138,160,196,.2);overflow:hidden;}
+.bar>i{display:block;height:100%;width:0;border-radius:99px;background:linear-gradient(90deg,var(--teal),var(--ink));box-shadow:0 0 14px rgba(102,255,204,.5);transition:width .25s;}
+
+/* ============ 頁面二 / Page 2 — ERC-20 分割發行 + PoR 勾稽 ============ */
+.tokform{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;}
+@media(max-width:680px){.tokform{grid-template-columns:repeat(2,1fr);}}
+@media(max-width:420px){.tokform{grid-template-columns:1fr;}}
+.field-c{border:1px solid var(--line);border-radius:12px;padding:12px 14px;background:rgba(20,32,57,.5);}
+.field-c .fl{font-family:var(--mono);font-size:10.5px;letter-spacing:.4px;text-transform:uppercase;color:var(--muted);}
+.field-c .fv2{font-family:var(--mono);font-size:18px;font-weight:700;margin-top:5px;}
+.field-c .fv2.cap{color:var(--teal);} .field-c .fv2.warnv{color:var(--orange);}
+.field-c .fn{font-size:11.5px;color:var(--muted);margin-top:4px;}
+
+/* PoR 勾稽卡 / proof-of-reserve reconciliation card(亮點一 核心) */
+.cmpcard{border:1px solid var(--line);border-radius:14px;padding:16px;margin-top:12px;background:rgba(20,32,57,.5);transition:.25s border-color,.25s background;}
+.cmpcard.ok{border-left:5px solid var(--teal);background:rgba(102,255,204,.05);}
+.cmpcard.mismatch{border-left:5px solid var(--red);box-shadow:0 0 0 1px rgba(255,102,102,.25) inset;}
+.cmpcard .top{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+.cmpcard .field{font-weight:800;font-size:14.5px;} .cmpcard .field small{font-family:var(--mono);font-size:10.5px;color:var(--muted);font-weight:400;display:block;}
+.cstatus{font-family:var(--mono);font-size:10.5px;font-weight:700;letter-spacing:.3px;padding:4px 10px;border-radius:99px;margin-left:auto;}
+.cstatus.bad{background:var(--red);color:#3a0c0c;} .cstatus.ok{background:var(--teal);color:#10331a;}
+.vs{display:grid;grid-template-columns:1fr auto 1fr;gap:10px;align-items:center;margin-top:12px;}
+@media(max-width:560px){.vs{grid-template-columns:1fr;}}
+.vbox{border:1px solid var(--line);border-radius:10px;padding:10px 12px;text-align:center;}
+.vbox .l{font-family:var(--mono);font-size:10px;letter-spacing:.4px;text-transform:uppercase;color:var(--muted);}
+.vbox .n{font-family:var(--mono);font-size:17px;font-weight:700;margin-top:3px;}
+.vbox.chain .n{color:var(--teal);} .vbox.por .n{color:var(--ink);}
+.vmid{font-family:var(--mono);font-size:13px;color:var(--muted);text-align:center;}
+.covbar{height:11px;border-radius:99px;background:rgba(138,160,196,.2);overflow:hidden;margin-top:12px;}
+.covbar>i{display:block;height:100%;width:0;border-radius:99px;background:linear-gradient(90deg,var(--teal),var(--ink));box-shadow:0 0 12px rgba(102,255,204,.5);transition:width .8s cubic-bezier(.2,.7,.2,1);}
+.srcline{font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+.srcquote{display:none;margin-top:8px;border:1px dashed var(--teal);border-radius:10px;padding:10px 12px;background:rgba(102,255,204,.06);font-size:12.5px;color:var(--ink-dim);}
+
+/* mint 進度與交易雜湊 / mint progress + tx hash */
+.mintzone{margin-top:14px;border:1px solid var(--line);border-radius:13px;padding:16px;background:rgba(20,32,57,.5);}
+.mintlbl{font-family:var(--mono);font-size:12.5px;color:var(--teal);margin-bottom:8px;display:none;}
+.txbox{display:none;margin-top:12px;border:1px dashed var(--teal);border-radius:10px;padding:11px 13px;background:rgba(102,255,204,.06);}
+.txbox .txr{display:flex;gap:8px;flex-wrap:wrap;font-family:var(--mono);font-size:11.5px;color:var(--ink-dim);margin-bottom:5px;}
+.txbox .txr b{color:var(--teal);} .txbox .hashv{word-break:break-all;color:var(--ink);}
+
+/* ============ 頁面三 / Page 3 — 投資人認購(白名單 / KYC) ============ */
+.kycgrid{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+@media(max-width:680px){.kycgrid{grid-template-columns:1fr;}}
+.wlist{display:grid;gap:9px;}
+.wrow{display:flex;align-items:center;gap:11px;border:1px solid var(--line);border-radius:11px;padding:11px 13px;background:rgba(20,32,57,.5);flex-wrap:wrap;}
+.wrow .lamp{width:11px;height:11px;border-radius:50%;flex:0 0 auto;}
+.wrow .lamp.g{background:var(--teal);box-shadow:0 0 10px var(--teal);} .wrow .lamp.r{background:var(--red);box-shadow:0 0 10px var(--red);}
+.wrow .wn{font-family:var(--mono);font-size:12.5px;font-weight:700;color:var(--ink);} .wrow .wn small{display:block;font-weight:400;color:var(--muted);}
+.wrow .ws{margin-left:auto;font-family:var(--mono);font-size:10.5px;font-weight:700;padding:3px 9px;border-radius:99px;white-space:nowrap;}
+.ws.ok{background:var(--teal);color:#10331a;} .ws.bad{background:var(--red);color:#3a0c0c;}
+
+/* 認購面板 / subscribe panel */
+.subpanel{border:1px solid var(--line);border-radius:13px;padding:16px;background:rgba(20,32,57,.5);}
+.subpanel label{font-family:var(--mono);font-size:11px;letter-spacing:.3px;text-transform:uppercase;color:var(--muted);display:block;margin-bottom:6px;}
+.subpanel input[type=range]{width:100%;accent-color:#66ffcc;}
+.subbig{font-family:var(--mono);font-size:28px;font-weight:700;color:var(--teal);margin:4px 0;}
+.subkv{display:flex;justify-content:space-between;font-family:var(--mono);font-size:12px;color:var(--ink-dim);padding:5px 0;border-bottom:1px dashed rgba(52,80,127,.5);}
+.subkv:last-of-type{border-bottom:0;} .subkv b{color:var(--ink);}
+
+/* 轉讓限制示意 / transfer restriction demo(亮點二) */
+.transfer{margin-top:14px;border:1px solid var(--line);border-radius:13px;padding:16px;background:rgba(20,32,57,.5);}
+.transfer select{font-family:var(--sans);font-size:13.5px;background:rgba(20,32,57,.8);border:1px solid var(--line);border-radius:9px;color:var(--ink);padding:9px 12px;outline:none;width:100%;margin-top:6px;}
+.transfer select:focus{border-color:var(--ink);}
+.txresult{display:none;margin-top:12px;border-radius:11px;padding:12px 14px;font-size:13px;}
+.txresult.pass{display:block;border:1px solid var(--teal);background:rgba(102,255,204,.07);color:var(--ink-dim);}
+.txresult.block{display:block;border:1px solid var(--red);background:rgba(255,102,102,.08);color:#ffb3b3;}
+.txresult code{font-family:var(--mono);color:var(--orange);}
+
+/* ============ 頁面四 / Page 4 — 智能合約自動分配租金 ============ */
+.boards{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;}
+@media(max-width:760px){.boards{grid-template-columns:1fr;}}
+.board{border:1px solid var(--line);border-radius:14px;padding:16px;background:rgba(20,32,57,.55);}
+.board .nm{font-weight:800;font-size:14px;} .board .nm small{display:block;font-family:var(--mono);font-size:10.5px;color:var(--muted);font-weight:400;letter-spacing:.3px;}
+.board .now{font-family:var(--mono);font-size:26px;font-weight:700;margin-top:8px;}
+.tag2{font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.3px;padding:3px 9px;border-radius:99px;margin-top:10px;display:inline-block;}
+.t-watch{background:var(--orange);color:#3a2c08;} .t-good{background:var(--teal);color:#10331a;}
+.s-watch{color:var(--orange);} .s-good{color:var(--teal);}
+.tbl{width:100%;border-collapse:collapse;font-size:13px;margin-top:4px;}
+.tbl th,.tbl td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);}
+.tbl th{font-family:var(--mono);font-size:10.5px;letter-spacing:.4px;text-transform:uppercase;color:var(--muted);font-weight:700;}
+.tbl td{font-family:var(--mono);font-size:12.5px;}
+.tbl tr:hover td{background:rgba(204,255,153,.04);}
+.tbl .pos{color:var(--teal);} .tbl .right{text-align:right;}
+.tbl .claimed{color:var(--teal);} .tbl .pending{color:var(--orange);}
+.tblwrap{overflow-x:auto;border:1px solid var(--line);border-radius:12px;background:rgba(20,32,57,.5);}
+/* 事件流 / contract event log */
+.evlog{margin-top:12px;border:1px solid var(--line);border-radius:12px;background:rgba(10,18,34,.6);padding:12px 14px;font-family:var(--mono);font-size:12px;max-height:170px;overflow-y:auto;}
+.evlog .ev{padding:4px 0;border-bottom:1px dashed rgba(52,80,127,.4);display:flex;gap:8px;flex-wrap:wrap;}
+.evlog .ev:last-child{border-bottom:0;} .evlog .ek{color:var(--teal);font-weight:700;} .evlog .et{color:var(--muted);} .evlog .ed{color:var(--ink-dim);}
+.evlog .empty{color:var(--muted);}
+
+/* ============ 頁面五 / Page 5 — ROI 視覺化 ============ */
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;}
+@media(max-width:760px){.kpis{grid-template-columns:repeat(2,1fr);}}
+@media(max-width:380px){.kpis{grid-template-columns:1fr;}}
+.kpi{border:1px solid var(--line);border-radius:13px;padding:13px 15px;background:rgba(20,32,57,.55);}
+.kpi .kl{font-family:var(--mono);font-size:10px;letter-spacing:.3px;text-transform:uppercase;color:var(--muted);}
+.kpi .kv{font-family:var(--mono);font-size:24px;font-weight:700;margin-top:5px;color:var(--ink);}
+.kpi .kd{font-family:var(--mono);font-size:10.5px;color:var(--muted);margin-top:4px;}
+.charts{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:4px;}
+@media(max-width:760px){.charts{grid-template-columns:1fr;}}
+.chartcard{border:1px solid var(--line);border-radius:14px;padding:16px;background:rgba(20,32,57,.55);}
+.chartcard .ct{font-weight:800;font-size:13.5px;margin-bottom:4px;} .chartcard .ct small{display:block;font-family:var(--mono);font-size:10px;color:var(--muted);font-weight:400;}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:8px;}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:middle;}
+.guard{margin-top:14px;border:1px solid var(--teal);border-radius:13px;padding:13px 16px;background:rgba(102,255,204,.06);font-size:12.5px;color:var(--ink-dim);}
+.guard b{color:var(--teal);}
+.disc{margin-top:12px;font-size:11.5px;color:var(--muted);border-left:3px solid var(--orange);padding:8px 12px;background:rgba(255,204,102,.05);}
+
+.toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(20px);z-index:50;opacity:0;pointer-events:none;
+  font-family:var(--mono);font-size:13px;color:#10331a;background:var(--teal);border-radius:11px;padding:11px 18px;box-shadow:0 14px 34px rgba(0,0,0,.4);transition:.3s;max-width:90vw;text-align:center;}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+.toast.warn{background:var(--orange);color:#3a2c08;}
+.foot{text-align:center;color:var(--muted);font-family:var(--mono);font-size:11px;margin-top:26px;letter-spacing:.3px;}
+/* 行動裝置適配 / mobile responsiveness — 確保不溢出且可操作 */
+.crow .co,.spec,.orow,.cmpcard .field,.srcline,.wrow .wn,.subkv{overflow-wrap:break-word;word-break:break-word;}
+@media(max-width:480px){
+  .wrap{padding:16px 12px 50px;} .panel{padding:16px;}
+  .topbar{padding:12px 14px;} .title h1{font-size:16px;} .h2{font-size:18px;} .board .now{font-size:22px;}
+  .crow{grid-template-columns:1fr;gap:8px;text-align:left;} .crow>div:last-child{text-align:left !important;}
+  .step{min-width:130px;} .btn{padding:11px 15px;font-size:13px;}
+  .subbig{font-size:24px;}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="topbar">
+    <div class="logo">XY</div>
+    <div class="title">
+      <h1>信義地產通 XinyiRealEstate — 不動產分割代幣化與收益分配平台</h1>
+      <div class="sub">XYRE · Fractional Real-Estate Tokenization &amp; Yield Distribution · PoC</div>
+    </div>
+    <div class="badge"><span class="dot"></span> XYRE · PROOF-OF-RESERVE 100%</div>
+  </div>
+
+  <!-- 五頁式 stepper(對應五頁流程,goStep 0..4) -->
+  <div class="stepper" id="stepper">
+    <div class="step" data-step="0"><div class="n">頁面一 / 01</div><div class="t">標的上架與 Oracle 估值</div><div class="e">Asset &amp; Oracle Valuation</div></div>
+    <div class="step locked" data-step="1"><div class="n">頁面二 / 02</div><div class="t">ERC-20 分割發行</div><div class="e">Tokenization &amp; PoR</div></div>
+    <div class="step locked" data-step="2"><div class="n">頁面三 / 03</div><div class="t">投資人認購(白名單)</div><div class="e">Subscription &amp; KYC</div></div>
+    <div class="step locked" data-step="3"><div class="n">頁面四 / 04</div><div class="t">智能合約自動分配租金</div><div class="e">Auto Rent Distribution</div></div>
+    <div class="step locked" data-step="4"><div class="n">頁面五 / 05</div><div class="t">ROI 視覺化</div><div class="e">ROI Visualization</div></div>
+  </div>
+
+  <!-- PoC / 台灣 STO 免責 banner -->
+  <div style="margin:0 0 14px;border:1px solid #ffcc66;border-left:5px solid #ffcc66;border-radius:11px;padding:10px 14px;background:rgba(255,204,102,.08);color:#ffd98a;font-size:12px;line-height:1.55;">
+    ⚠ <b>概念驗證(PoC)聲明</b>:本平台為離線可點擊原型,所有上鏈、Oracle 餵價、KYC/AML、mint / 租金分配、交易雜湊皆為<b>模擬示意,非真實上鏈</b>,數值為寫死模擬資料。XYRE 具<b>證券性質</b> → 台灣 STO 限<b>專業投資人</b>、單一平台合計豁免 ≤ NT$1 億、單檔 ≤ 3,000 萬免申報、逾 3,000 萬須進<b>監理沙盒</b>;本案 4.8 億遠超門檻,落地須走監理沙盒或不動產投資信託/信託受益權或限專業投資人私募,轉讓須白名單(KYC)、不可自由流通(對標 ERC-3643/1400),VASP 須依洗錢防制法登記。畫面為示意,<b>非投資招攬、非投資建議</b>。
+  </div>
+
+  <!-- ============================ PAGE 1 / 頁面一 ============================ -->
+  <section class="view show" data-view="0">
+    <div class="panel stag">
+      <div class="eyebrow">Page 01 · Asset Onboarding &amp; Oracle Valuation</div>
+      <div class="h2">標的上架與 Oracle 估值 / Asset &amp; Oracle Valuation</div>
+      <p class="lead">選取一筆待代幣化的不動產標的,由 Oracle 餵入房價指數與租金行情,完成 AI/Oracle 公允估值與 NOI 計算,以啟動 ERC-20 分割發行。<br>Pick a real-estate asset; Oracle feeds price index &amp; rent comps to derive fair value &amp; NOI, then start tokenization.</p>
+
+      <div class="secttl">🏢 待上架標的清單 <span class="en">Asset List</span></div>
+      <div class="cases" id="cases"></div>
+
+      <div class="secttl">📐 標的規格(信義之星一戶) <span class="en">Asset Spec</span></div>
+      <div class="specgrid" id="specgrid"></div>
+
+      <div class="secttl">🛰 Oracle 餵價(房價指數 / 租金行情) <span class="en">Oracle Price &amp; Rent Feeds</span></div>
+      <div class="oracle" id="oracle1"></div>
+
+      <div class="secttl">⬇ 匯入產權託管與 Oracle 資料 <span class="en">Import Custody &amp; Oracle Data</span></div>
+      <div class="upload disabled" id="upload">
+        <div class="ico">🛰️</div>
+        <div class="big lock" id="upText">請先於上方點選「信義之星 一戶(待上架)」標的 / Select the pending asset above first</div>
+        <div class="fmt">資料源 Sources: 產權登記 / 信託託管憑證(proof-of-reserve) · Oracle 房價指數 · 租金行情 Feed</div>
+        <div class="uprog" id="uprog">
+          <div class="lbl" id="uprogLbl">匯入產權登記… 20%</div>
+          <div class="bar"><i id="uprogBar"></i></div>
+        </div>
+      </div>
+      <div class="btnrow"><span class="hint" id="p1hint">提示 Tip:「信義之星 一戶」為主角標的(80 坪 / 4.8 億 / 月租 60 萬),點選後即可匯入託管與 Oracle 資料並完成估值。</span></div>
+    </div>
+  </section>
+
+  <!-- ============================ PAGE 2 / 頁面二 ============================ -->
+  <section class="view" data-view="1">
+    <div class="panel">
+      <div class="eyebrow">Page 02 · ERC-20 Tokenization &amp; Proof-of-Reserve</div>
+      <div class="h2">ERC-20 分割發行 / Tokenization &amp; PoR</div>
+      <p class="lead">將 NT$4.8 億公允值依 NAV 定價分割為 ERC-20 代幣「XYRE」:發行 480,000 枚 @ NT$1,000,最低 10 枚(1 萬起)。發行前須通過 <b>proof-of-reserve 勾稽</b>(鏈上供給 = 鏈下託管憑證,覆蓋率 100%,防超發)。<br>Split NT$480M into 480,000 XYRE @ NT$1,000 (min 10 tokens). Mint is gated by 100% proof-of-reserve coverage to prevent over-issuance.</p>
+
+      <div class="secttl">🪙 代幣參數 <span class="en">Token Parameters (XYRE)</span></div>
+      <div class="tokform">
+        <div class="field-c"><div class="fl">代幣標準 Standard</div><div class="fv2">ERC-20</div><div class="fn">分割所有權 · 對標 ERC-3643/1400 白名單</div></div>
+        <div class="field-c"><div class="fl">發行總量 Total Supply</div><div class="fv2 cap">480,000 枚</div><div class="fn">= 上限 ≤ 託管憑證單位(防超發)</div></div>
+        <div class="field-c"><div class="fl">單位價格 Unit Price</div><div class="fv2">NT$ 1,000</div><div class="fn">= 4.8 億 ÷ 48 萬枚(NAV 定價)</div></div>
+        <div class="field-c"><div class="fl">最低投資額 Min. Ticket</div><div class="fv2">NT$ 10,000</div><div class="fn">10 枚起 · 小資族可及</div></div>
+        <div class="field-c"><div class="fl">1 代幣持分 Per-token Share</div><div class="fv2">1 / 480,000</div><div class="fn">≈ 0.000167 坪 / 枚</div></div>
+        <div class="field-c"><div class="fl">合規限制 Compliance</div><div class="fv2 cap">白名單 KYC</div><div class="fn">限專業投資人 · 不可自由流通</div></div>
+      </div>
+
+      <!-- ★ 亮點一:proof-of-reserve 勾稽防超發 -->
+      <div class="secttl">🔗 Proof-of-Reserve 勾稽(防超發 Guard) <span class="en">On-chain Supply vs Custody</span></div>
+      <p class="hint" style="margin:-4px 0 6px">智能合約 mint 前,須將「鏈上代幣供給」與「鏈下信託託管憑證單位」逐一勾稽:覆蓋率須 = 100% 才放行;若鏈上 &gt; 託管,合約 <code style="color:var(--orange)">require(supply ≤ reserveUnits)</code> 會 revert,從根本杜絕超額發行/無實體支撐的假資產。<br>Mint reverts unless on-chain supply ≤ custody reserve units (100% coverage).</p>
+
+      <div class="cmpcard ok" id="porCard">
+        <div class="top"><div class="field">供給勾稽:信義之星 / XYRE<small>On-chain Total Supply vs Off-chain Proof-of-Reserve</small></div><span class="cstatus ok" id="porStatus">✓ 覆蓋率 100% COVERED</span></div>
+        <div class="vs">
+          <div class="vbox chain"><div class="l">鏈上供給 On-chain</div><div class="n">480,000</div></div>
+          <div class="vmid">＝<br><span style="color:var(--teal)">完全勾稽 match</span></div>
+          <div class="vbox por"><div class="l">託管憑證 Proof-of-Reserve</div><div class="n">480,000</div></div>
+        </div>
+        <div class="covbar"><i id="covBar"></i></div>
+        <div class="srcline">📄 依據 Source: 信託機構資產持有/受益權憑證 2026/06/15
+          <button class="btn sm ghost" id="viewSrc">🔍 查看依據(託管證明)View proof-of-reserve</button></div>
+        <div class="srcquote" id="srcQuote">「受託信託機構 2026/06/15 出具之受益權憑證:本標的(信義之星 80 坪,公允值 NT$4.8 億)登記<b style="color:var(--teal)">可代幣化份額上限為 480,000 單位</b>(對應產權 100%);智能合約 mint 上限即綁定此數,鏈上供給<b style="color:var(--teal)">不得逾 480,000</b>,逾額交易將 revert,防止超額發行。」</div>
+      </div>
+
+      <div class="secttl">⛓ 模擬 Mint 上鏈 <span class="en">Simulated On-chain Mint</span></div>
+      <div class="mintzone">
+        <div class="mintlbl" id="mintLbl">準備中…</div>
+        <div class="bar"><i id="mintBar"></i></div>
+        <div class="txbox" id="txBox">
+          <div class="txr"><b>交易雜湊 Tx Hash:</b> <span class="hashv" id="txHash">0x—</span></div>
+          <div class="txr"><b>區塊 Block:</b> <span id="txBlock">—</span> <b style="margin-left:8px">合約 Contract:</b> <span id="txContract">0xXYRE…001</span></div>
+          <div class="txr"><b>事件 Event:</b> <span style="color:var(--teal)">Minted(to=Treasury, amount=480000) · ReserveUpdated(480000) (示意 / illustrative)</span></div>
+        </div>
+        <div class="btnrow" style="margin-top:14px">
+          <button class="btn primary" id="mintBtn">🚀 模擬 Mint 480,000 XYRE Simulate Mint</button>
+          <span class="hint" id="mintHint">PoR 覆蓋率 100% 已通過,可發行 / Reserve verified — ready to mint</span>
+        </div>
+      </div>
+
+      <div class="btnrow">
+        <button class="btn ghost" data-go="0">← 返回 Back</button>
+        <button class="btn primary" id="toSub" disabled>已發行,進入投資人認購 ➔</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ PAGE 3 / 頁面三 ============================ -->
+  <section class="view" data-view="2">
+    <div class="panel">
+      <div class="eyebrow">Page 03 · Subscription &amp; KYC Whitelist</div>
+      <div class="h2">投資人認購(白名單 / KYC) / Subscription &amp; KYC</div>
+      <p class="lead">小資族 1 萬起(10 枚)即可認購 XYRE;僅通過 KYC/AML 的<b>白名單</b>錢包可持有與轉讓,非白名單轉讓會被合約擋下(<code style="color:var(--orange);font-family:var(--mono)">TransferRestricted</code>)。<br>Min ticket NT$10,000 (10 tokens). Only KYC-whitelisted wallets may hold/transfer; non-whitelisted transfers revert.</p>
+
+      <div class="secttl">💴 小資認購(滑桿試算) <span class="en">Retail Subscription</span></div>
+      <div class="subpanel">
+        <label for="qtyRange">認購數量 Tokens(10 枚起 / min 10)</label>
+        <input type="range" id="qtyRange" min="10" max="500" step="10" value="10" />
+        <div class="subbig" id="subQty">10 枚 XYRE</div>
+        <div class="subkv"><span>投資金額 Amount</span><b id="subAmt">NT$ 10,000</b></div>
+        <div class="subkv"><span>持分 Ownership</span><b id="subShare">0.00208%</b></div>
+        <div class="subkv"><span>預估年配息 Est. Annual Yield(NT$12.5/枚)</span><b id="subDiv">NT$ 125</b></div>
+        <div class="subkv"><span>身分別 Investor Type</span><b style="color:var(--orange)">限專業投資人(台灣 STO)</b></div>
+        <div class="btnrow" style="margin-top:14px">
+          <button class="btn primary sm" id="subBtn">✅ 模擬白名單認購 Subscribe(KYC ✓)</button>
+          <span class="hint" id="subHint">您的錢包 0xRetail…77 已通過 KYC,屬白名單 / KYC-verified</span>
+        </div>
+      </div>
+
+      <!-- ★ 亮點二:白名單轉讓限制 -->
+      <div class="secttl">🔒 白名單轉讓限制(示意) <span class="en">Whitelist Transfer Restriction</span></div>
+      <div class="kycgrid">
+        <div>
+          <div class="hint" style="margin-bottom:8px">白名單錢包名冊 / Whitelist registry(ERC-3643 對標)</div>
+          <div class="wlist" id="wlist"></div>
+        </div>
+        <div class="transfer">
+          <div class="hint" style="margin-bottom:4px">模擬轉讓 XYRE / Simulate transfer</div>
+          <label style="margin-top:8px">收款地址 To address</label>
+          <select id="toAddr">
+            <option value="wl">0xWhite…88(白名單 · 已 KYC)</option>
+            <option value="nw">0xStranger…ff(非白名單 · 未 KYC)</option>
+          </select>
+          <div class="btnrow" style="margin-top:12px">
+            <button class="btn primary sm" id="xferBtn">📤 嘗試轉讓 100 XYRE Transfer</button>
+          </div>
+          <div class="txresult" id="xferResult"></div>
+        </div>
+      </div>
+
+      <div class="btnrow">
+        <button class="btn ghost" data-go="1">← 返回 Back</button>
+        <button class="btn primary" id="toYield">前往收益分配 ➔</button>
+        <span class="hint" id="subStatus">提示:認購後即進入持倉名冊,可於下一頁領取季度租金 / Subscribe then claim quarterly rent</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ PAGE 4 / 頁面四 ============================ -->
+  <section class="view" data-view="3">
+    <div class="panel">
+      <div class="eyebrow">Page 04 · Smart-Contract Rent Distribution</div>
+      <div class="h2">智能合約自動分配租金 / Auto Rent Distribution</div>
+      <p class="lead">每季由智能合約 pull-based 分配淨租金:管理方先存入本期淨租金(<code style="color:var(--orange);font-family:var(--mono)">RentDeposited</code>),投資人再依持倉比例領取(<code style="color:var(--orange);font-family:var(--mono)">RentClaimed</code>)。本期(Q2)淨租金 NT$150 萬。<br>Quarterly pull-based payout: manager deposits NOI, holders claim pro-rata by holdings.</p>
+
+      <div class="secttl">💵 本期收益池(Q2) <span class="en">Distributable Pool</span></div>
+      <div class="boards" id="yieldKpi"></div>
+
+      <div class="secttl">👤 持倉名冊與 pull-based 領取 <span class="en">Holdings &amp; Pull-based Claim</span></div>
+      <div class="tblwrap"><table class="tbl" id="holdTbl"></table></div>
+      <div class="btnrow" style="margin-top:8px">
+        <button class="btn warn sm" id="depositBtn">🏦 管理方存入本期淨租金 150 萬 RentDeposited</button>
+        <button class="btn primary sm" id="claimAllBtn" disabled>💰 全體投資人 pull 領取 ClaimAll</button>
+        <span class="hint" id="distHint">步驟:① 存入收益池 → ② 各持有人 pull-based 領取 / Deposit then claim</span>
+      </div>
+
+      <div class="secttl">📜 合約事件流 <span class="en">Contract Event Log</span></div>
+      <div class="evlog" id="evlog"><div class="empty">尚無事件 · 請先存入本期淨租金 / No events yet — deposit rent first</div></div>
+
+      <div class="btnrow">
+        <button class="btn ghost" data-go="2">← 返回 Back</button>
+        <button class="btn primary" id="toROI">前往 ROI 視覺化 ➔</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ PAGE 5 / 頁面五 ============================ -->
+  <section class="view" data-view="4">
+    <div class="panel">
+      <div class="eyebrow">Page 05 · ROI Visualization</div>
+      <div class="h2">ROI 視覺化 / ROI Visualization</div>
+      <p class="lead">以您的持倉(預設 100 枚 = NT$10 萬)視覺化報酬:現金殖利率 1.25% + 假設年增值 3%(情境)≈ 總報酬 4.25%。台灣住宅租金殖利率本就偏低,本平台價值在<b>分割可及性、流動性、透明、自動分潤</b>,非高息。<br>Cash yield 1.25% + assumed 3% appreciation (scenario) ≈ 4.25% total return. Value = accessibility, not high yield.</p>
+
+      <div class="secttl">📈 ROI 關鍵指標 <span class="en">ROI KPIs</span></div>
+      <div class="kpis" id="roiKpis"></div>
+
+      <div class="charts">
+        <div class="chartcard">
+          <div class="ct">持倉占比 <small>Holding Share (480,000 supply)</small></div>
+          <div id="donutWrap" style="display:flex;justify-content:center;margin-top:6px"></div>
+          <div class="legend"><span><i style="background:#66ffcc"></i>您的持倉 You(100 枚)</span><span><i style="background:#34507f"></i>其他持有人 Others</span></div>
+        </div>
+        <div class="chartcard">
+          <div class="ct">ROI 組成(年化 %) <small>Cash Yield + Appreciation (scenario)</small></div>
+          <div id="barWrap" style="margin-top:10px"></div>
+          <div class="legend"><span><i style="background:#66ffcc"></i>現金殖利率 1.25%</span><span><i style="background:#ffcc66"></i>假設增值 3%(情境)</span></div>
+        </div>
+        <div class="chartcard" style="grid-column:1 / -1">
+          <div class="ct">收益累積曲線(NT$ / 5 年示意) <small>Cumulative Return — 100 tokens, NT$100k cost</small></div>
+          <div id="lineWrap" style="margin-top:10px"></div>
+          <div class="legend"><span><i style="background:#ccff99"></i>累積配息 Cumulative dividends</span><span><i style="background:#66ffcc"></i>含假設增值之總值 Total value (w/ appreciation)</span></div>
+        </div>
+      </div>
+
+      <div class="guard">
+        <b>🛡 四大亮點 / Four pillars:</b> ① <b>Proof-of-Reserve 防超發</b>:mint 上限綁定託管憑證,逾額 revert;② <b>白名單轉讓限制</b>:非 KYC 錢包轉讓被擋(ERC-3643/1400);③ <b>自動租金分配</b>:智能合約 pull-based 依持倉撥付;④ <b>ROI 透明</b>:殖利率、增值、總報酬以圖表揭露。
+      </div>
+      <div class="disc">⚠ 免責 Disclaimer:本案為 PoC 模擬,非真實上鏈、<b>非投資招攬、非投資建議</b>。台灣住宅<b>租金殖利率本就偏低(本案約 1.25%)</b>;年增值 3% 為<b>信義精華區情境假設、非保證</b>,房價可跌、總報酬可能為負。XYRE 具<b>證券性質</b>,須符合台灣 STO/監理沙盒、適合度、KYC/AML、白名單轉讓規範;Oracle 有遭操縱風險、智能合約有程式風險、二級市場可能流動性不足。/ Illustrative only — not an offer or investment advice.</div>
+
+      <div class="btnrow">
+        <button class="btn ghost" data-go="3">← 返回 Back</button>
+        <button class="btn primary" id="exportBtn">💾 導出投資人 ROI 報表 (PDF)</button>
+        <button class="btn ghost" id="resetBtn">↺ 重新開始 Restart</button>
+      </div>
+    </div>
+  </section>
+
+  <div class="foot">PoC PROTOTYPE · 信義地產通 XinyiRealEstate(XYRE)· 五頁 / 5 pages · 數值為示意 illustrative · 區塊鏈/Oracle/KYC 為模擬非真實上鏈 · 繁中 / EN · 具證券性質,非投資招攬/建議</div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* =========================================================================
+   PoC 互動原型 — 行為與狀態總覽 / Interaction & state overview
+   ‧ 頁面切換 page switch:goStep(0..4),由 5 格步驟列(tab)與 [data-go] 按鈕觸發
+       (沿用 RWA 系列 goStep/unlock 狀態機與事件委派,支援 reset)
+   ‧ 主要互動 interactions(對應五頁 / data-view 0..4):
+       頁1 選標的 → 規格/Oracle 餵價 → 匯入(進度) → 估值 → 解鎖頁2
+       頁2 ★亮點一 PoR 勾稽(鏈上 480,000 = 託管 480,000,覆蓋率 100%,防超發 guard);
+            查看託管證明 → 模擬 mint(進度 + 交易雜湊 + Minted/ReserveUpdated 事件)
+       頁3 小資認購滑桿試算(10 枚起);★亮點二 白名單轉讓:白名單→PASS、非白名單→TransferRestricted revert
+       頁4 ★亮點三 自動租金分配:RentDeposited 存入 150 萬 → 各持有人 pull-based RentClaimed 領取 + 事件流
+       頁5 ★亮點四 ROI 圖表:SVG 甜甜圈(持倉占比)、長條(殖利率+增值)、折線(收益累積曲線);導出/重設
+   ‧ 狀態切換 state(僅示意,不持久化 no persistence):
+       minted=是否已模擬 mint(解鎖頁2前進);subscribed=是否已認購(影響頁4持倉/頁5 KPI 文案);
+       rentDeposited=本期收益池是否已注入(解鎖 ClaimAll);claimed[]=各持有人是否已領取
+   ========================================================================= */
+
+/* ====== 資料層 / DATA — 模擬資料寫死(主角:信義之星 一戶) ====== */
+const CASES = [
+  {co:'信義之星 一戶', en:'XYRE-001 · 不動產 Real Estate · 台北信義計畫區', upd:'09:10', status:'pending', main:true},
+  {co:'大直水岸景觀宅', en:'XYRE-014 · 不動產 Real Estate', upd:'08:30', status:'analyzing', prog:55},
+  {co:'內湖科技園商辦', en:'XYRE-021 · 商辦 Office', upd:'09:20', status:'ready'}
+];
+// 標的規格 / asset spec(信義之星)
+const SPECS = [
+  {sl:'面積 Area', sv:'80 坪', sd:'約 264.5 ㎡'},
+  {sl:'公允估值 Fair Value', sv:'NT$4.8 億', sd:'單價約 600 萬/坪'},
+  {sl:'年毛租 Gross Rent', sv:'NT$720 萬', sd:'月租 NT$60 萬'},
+  {sl:'年淨租金 NOI', sv:'NT$600 萬', sd:'毛租 720 萬 − 稅費 120 萬'}
+];
+// Oracle 餵價 / oracle feeds(頁1)
+const ORACLES1 = [
+  {on:'房價指數 Price Index', ov:'信義住宅 600 萬/坪(近一年 +3.0%)', ot:'09:00 更新', pending:false},
+  {on:'租金行情 Rent Comp', ov:'信義豪宅 月租 55–62 萬', ot:'09:00 更新', pending:false},
+  {on:'資本化率 Cap Rate', ov:'住宅 1.25%(NOI 600 萬 ÷ 4.8 億)', ot:'08:30 更新', pending:false},
+  {on:'信託託管憑證 PoR', ov:'待匯入(可代幣化上限 480,000 單位)', ot:'待勾稽', pending:true}
+];
+// 頁4 收益池 KPI / yield pool
+const YIELD = {
+  pot: {nm:'本期可分配淨租金', en:'Distributable (Q2)', now:'150', unit:'萬', status:'good', tag:'年 NOI 600 萬 ÷ 4 季'},
+  per: {nm:'每代幣季配', en:'Per-token / Quarter', now:'3.125', unit:'元', status:'good', tag:'年配 NT$12.5 ÷ 4'},
+  apr: {nm:'現金殖利率', en:'Cash Yield', now:'1.25', unit:'%', status:'watch', tag:'年 NOI 600 萬 ÷ 4.8 億'}
+};
+// 持倉名冊 / holders(pull-based 領取;您=自然人丙 100 枚)
+const HOLDERS = [
+  {id:'0xRetail…77(您 You · 自然人 · 白名單)', share:100,   pct:'0.0208%'},
+  {id:'0xA1…法人甲(專業投資人 · 白名單)',      share:96000, pct:'20.0%'},
+  {id:'0xB7…法人乙(機構 · 白名單)',           share:48000, pct:'10.0%'},
+  {id:'0xC3…自然人丙(專業投資人 · 白名單)',     share:9900,  pct:'2.06%'}
+];
+// 白名單名冊 / whitelist registry(頁3)
+const WHITELIST = [
+  {wn:'0xRetail…77', sub:'您 You · 自然人(已 KYC)', ok:true},
+  {wn:'0xWhite…88',  sub:'法人甲 · 專業投資人(已 KYC)', ok:true},
+  {wn:'0xA1…fa',     sub:'機構乙 · 信託(已 KYC)', ok:true},
+  {wn:'0xStranger…ff', sub:'匿名錢包 · 未 KYC(不在白名單)', ok:false}
+];
+
+/* ====== 流程 / FLOW & STATE ====== */
+const $ = s => document.querySelector(s);
+const NL = n => n.toLocaleString('en-US');           // 千分位 / thousands
+let minted = false;        // 頁2 是否已模擬 mint
+let subscribed = false;    // 頁3 是否已認購
+let rentDeposited = false; // 頁4 收益池是否已注入
+let claimed = {};          // 頁4 各持有人是否已領取(index → bool)
+let _maxStep = 0;
+const stepEls = [...document.querySelectorAll('.step')];
+const viewEls = [...document.querySelectorAll('.view')];
+
+function unlock(n){ _maxStep = Math.max(_maxStep, n); }
+function goStep(n){
+  viewEls.forEach(v => v.classList.toggle('show', +v.dataset.view === n));
+  stepEls.forEach((s,i) => { s.classList.toggle('active', i===n); s.classList.toggle('done', i<n); s.classList.toggle('locked', i>_maxStep); });
+  window.scrollTo({top:0, behavior:'smooth'});
+}
+stepEls.forEach(s => s.onclick = () => { const n=+s.dataset.step; if(n<=_maxStep) goStep(n); });
+document.querySelectorAll('[data-go]').forEach(b => b.onclick = () => { const n=+b.dataset.go; unlock(n); goStep(n); });
+
+function toast(msg, warn){
+  const t=$('#toast'); t.textContent=msg; t.className='toast show'+(warn?' warn':'');
+  clearTimeout(t._t); t._t=setTimeout(()=>t.className='toast'+(warn?' warn':''),2600);
+}
+function ts(){ const d=new Date(),z=n=>String(n).padStart(2,'0');
+  return String(d.getFullYear()).slice(2)+z(d.getMonth()+1)+z(d.getDate())+z(d.getHours())+z(d.getMinutes()); }
+function randHash(){ const h='0123456789abcdef'; let s='0x'; for(let i=0;i<40;i++) s+=h[Math.floor(Math.random()*16)]; return s; }
+
+/* ---------------- 頁面一 / Page 1 — 標的上架與 Oracle 估值 ---------------- */
+function renderCases(){
+  const host=$('#cases'); host.innerHTML='';
+  CASES.forEach(c=>{
+    const row=document.createElement('div');
+    row.className='crow'+(c.main?' actionable':'');
+    let badge='';
+    if(c.status==='pending')   badge='<span class="stbadge st-pending">● 待上架 Pending</span>';
+    if(c.status==='analyzing') badge=`<span class="stbadge st-analyzing">⟳ 盡調中 ${c.prog}% <span class="miniprog"><i style="width:${c.prog}%"></i></span></span>`;
+    if(c.status==='ready')     badge='<span class="stbadge st-ready">✓ 已上架 Ready</span>';
+    const cls = (c.en.split('·')[1]||'').trim();
+    row.innerHTML=`
+      <div class="co">${c.co}<small>${c.en}</small></div>
+      <div><div class="lab">資料更新 Updated</div><div class="v">${c.upd}</div></div>
+      <div><div class="lab">類別 Class</div><div class="v">${cls}</div></div>
+      <div style="text-align:right">${badge}${c.main?'<div class="cta">▶ 點此開始上架估值 Click to start</div>':''}</div>`;
+    if(c.main){
+      row.onclick=()=>{
+        document.querySelectorAll('.crow').forEach(x=>x.classList.remove('sel'));
+        row.classList.add('sel'); enableUpload();
+      };
+    }else{
+      row.onclick=()=> toast(c.status==='analyzing' ? '此標的盡調進行中 (55%),請稍候 / Due-diligence in progress' : '此標的已上架完成,可另行檢視 / Onboarded', true);
+    }
+    host.appendChild(row);
+  });
+}
+function renderSpecs(){
+  const host=$('#specgrid'); host.innerHTML='';
+  SPECS.forEach(s=> host.insertAdjacentHTML('beforeend',`<div class="spec"><div class="sl">${s.sl}</div><div class="sv">${s.sv}</div><div class="sd">${s.sd}</div></div>`));
+}
+function renderOracle1(){
+  const host=$('#oracle1'); host.innerHTML='';
+  ORACLES1.forEach(o=> host.insertAdjacentHTML('beforeend',
+    `<div class="orow"><span class="on">${o.on}</span><span class="ov ${o.pending?'opending':''}">${o.ov}</span><span class="ot">${o.ot}</span></div>`));
+}
+function enableUpload(){
+  const u=$('#upload'); u.classList.remove('disabled'); u.classList.add('ready');
+  $('#upText').className='big';
+  $('#upText').textContent='點擊匯入 信義之星 產權託管憑證(proof-of-reserve)與 Oracle 房價/租金資料 / Click to import custody & oracle data';
+  $('#p1hint').textContent='已選取「信義之星 一戶」。點擊上方匯入區即可完成 Oracle 估值並解鎖 ERC-20 分割發行。 / Click intake zone to value & tokenize.';
+  u.onclick=startUpload;
+}
+function startUpload(){
+  const u=$('#upload'); u.onclick=null; u.classList.remove('ready');
+  $('#upText').style.display='none'; $('#upload').querySelector('.fmt').style.display='none';
+  $('#uprog').style.display='block';
+  const stages=[
+    ['匯入產權登記謄本… 20% / Title deed',20],
+    ['匯入信託託管憑證(proof-of-reserve)… 45% / Custody proof',45],
+    ['Oracle 餵入房價指數(600 萬/坪)… 65% / Price index',65],
+    ['Oracle 餵入租金行情(月 60 萬)… 85% / Rent comps',85],
+    ['公允估值 4.8 億 · NOI 600 萬 · 估值完成 ✓ / Valuation complete',100]
+  ];
+  let i=0; const lbl=$('#uprogLbl'), bar=$('#uprogBar');
+  const t=setInterval(()=>{
+    lbl.textContent=stages[i][0]; bar.style.width=stages[i][1]+'%'; i++;
+    if(i>=stages.length){
+      clearInterval(t);
+      // 託管憑證匯入後,PoR 由「待勾稽」轉為已勾稽
+      ORACLES1[3]={on:'信託託管憑證 PoR', ov:'已驗 · 可代幣化上限 480,000 單位(覆蓋率 100%)', ot:'2026/06/15', pending:false};
+      renderOracle1();
+      setTimeout(()=>{ unlock(1); goStep(1); animateCoverage(); },600);
+    }
+  },600);
+}
+
+/* ---------------- 頁面二 / Page 2 — ERC-20 分割發行 + PoR 勾稽 ---------------- */
+function animateCoverage(){ const bar=$('#covBar'); bar.style.width='0'; requestAnimationFrame(()=>{ setTimeout(()=>bar.style.width='100%',60); }); }
+$('#mintBtn').onclick=function(){
+  if(minted){ toast('XYRE 已發行,請進入投資人認購 / Already minted', true); return; }
+  const o=this.textContent; this.disabled=true; this.textContent='⛓ 上鏈中 Minting…';
+  $('#mintLbl').style.display='block';
+  const lbl=$('#mintLbl'), bar=$('#mintBar');
+  const stages=[
+    ['PoR 勾稽通過(480,000 = 480,000,覆蓋率 100%)… 25% / Reserve verified',25],
+    ['require(supply ≤ reserveUnits) 通過,鑄造 XYRE… 60% / Minting',60],
+    ['寫入鏈上、發出 Minted / ReserveUpdated 事件… 90% / Emitting events',90],
+    ['Minted & Confirmed ✓ / 已確認',100]
+  ];
+  let i=0;
+  const t=setInterval(()=>{
+    lbl.textContent=stages[i][0]; bar.style.width=stages[i][1]+'%'; i++;
+    if(i>=stages.length){
+      clearInterval(t); minted=true;
+      $('#txHash').textContent=randHash();
+      $('#txBlock').textContent='#'+(19_482_000+Math.floor(Math.random()*900)).toLocaleString('en-US');
+      $('#txBox').style.display='block';
+      this.textContent='✓ 已發行 480,000 XYRE'; this.disabled=true;
+      $('#mintHint').textContent='✓ 鑄造完成,供給 = 託管 480,000;可進入認購 / Minted, ready';
+      $('#toSub').disabled=false;
+      toast('✓ 已模擬 mint 480,000 XYRE(PoR 100% 覆蓋,事件 Minted/ReserveUpdated 已發出)');
+    }
+  }.bind(this),650);
+};
+$('#toSub').onclick=()=>{ unlock(2); goStep(2); renderSub(); };
+
+/* ---------------- 頁面三 / Page 3 — 投資人認購(白名單 / KYC) ---------------- */
+function renderSub(){
+  renderWhitelist(); updateSub();
+}
+function renderWhitelist(){
+  const host=$('#wlist'); host.innerHTML='';
+  WHITELIST.forEach(w=>{
+    const badge = w.ok ? '<span class="ws ok">✓ 白名單 KYC</span>' : '<span class="ws bad">✕ 未授權</span>';
+    host.insertAdjacentHTML('beforeend',
+      `<div class="wrow"><span class="lamp ${w.ok?'g':'r'}"></span><div class="wn">${w.wn}<small>${w.sub}</small></div>${badge}</div>`);
+  });
+}
+function updateSub(){
+  const q=+$('#qtyRange').value;
+  $('#subQty').textContent=NL(q)+' 枚 XYRE';
+  $('#subAmt').textContent='NT$ '+NL(q*1000);
+  $('#subShare').textContent=(q/480000*100).toFixed(5).replace(/0+$/,'').replace(/\.$/,'')+'%';
+  $('#subDiv').textContent='NT$ '+NL(q*12.5);
+}
+$('#qtyRange').oninput=updateSub;
+$('#subBtn').onclick=function(){
+  const q=+$('#qtyRange').value; subscribed=true;
+  this.textContent='✓ 已認購 '+NL(q)+' 枚';
+  $('#subHint').innerHTML='✓ 認購成功 · Whitelisted(0xRetail…77)· 已入持倉名冊 / Subscribed';
+  $('#subStatus').innerHTML='✓ 已認購 '+NL(q)+' 枚,可於下一頁領取季度租金 / Subscribed — claim rent next';
+  $('#subStatus').style.color='var(--teal)';
+  setTimeout(()=>{ this.textContent='✅ 模擬白名單認購 Subscribe(KYC ✓)'; },2200);
+  toast('✓ 白名單認購成功:'+NL(q)+' 枚 XYRE(NT$ '+NL(q*1000)+')· KYC 已驗');
+};
+// ★ 亮點二:白名單轉讓限制示意
+$('#xferBtn').onclick=function(){
+  const to=$('#toAddr').value; const res=$('#xferResult');
+  if(to==='wl'){
+    res.className='txresult pass';
+    res.innerHTML='✅ <b>轉讓成功 Transfer OK</b> — 收款方為白名單已 KYC 錢包,合約 <code>_beforeTokenTransfer()</code> 檢查通過,100 XYRE 已轉出。事件 <code>Transfer</code> 已發出。';
+    toast('✅ 轉讓成功:收款方在白名單,合約放行 100 XYRE');
+  }else{
+    res.className='txresult block';
+    res.innerHTML='⛔ <b>轉讓被擋 BLOCKED</b> — 收款地址 0xStranger…ff 不在白名單(未 KYC),合約 revert:<code>TransferRestricted(to not whitelisted)</code>。事件 <code>TransferRestricted</code> 已記錄,XYRE 不可流向非白名單(對標 ERC-3643/1400)。';
+    toast('⛔ TransferRestricted:非白名單錢包,轉讓被合約擋下', true);
+  }
+};
+$('#toYield').onclick=()=>{
+  if(!subscribed) toast('提醒:尚未認購,將以名冊既有持有人示意分配 / Not subscribed — using demo holders', true);
+  unlock(3); goStep(3); renderYield();
+};
+
+/* ---------------- 頁面四 / Page 4 — 智能合約自動分配租金 ---------------- */
+const POOL = 1_500_000;               // 本期淨租金 NT$150 萬
+const MINTED_SUPPLY = 480000;
+function renderYield(){
+  // KPI
+  const host=$('#yieldKpi'); host.innerHTML='';
+  ['pot','per','apr'].forEach(k=>{
+    const b=YIELD[k];
+    host.insertAdjacentHTML('beforeend',`<div class="board">
+      <div class="nm">${b.nm}<small>${b.en}</small></div>
+      <div class="now s-${b.status}">${b.now}<span style="font-size:14px"> ${b.unit}</span></div>
+      <span class="tag2 t-${b.status}">${b.tag}</span></div>`);
+  });
+  renderHoldTbl();
+}
+function rentOf(shares){ return Math.round(POOL * shares / MINTED_SUPPLY); }  // pull-based 比例分配
+function renderHoldTbl(){
+  let rows='<tr><th>投資人 Investor</th><th class="right">持倉 Shares</th><th class="right">佔比 %</th><th class="right">應配租金 NT$</th><th class="right">領取狀態 Claim</th></tr>';
+  HOLDERS.forEach((h,i)=>{
+    const amt = rentOf(h.share);
+    const cdone = claimed[i];
+    const claimCell = !rentDeposited
+      ? '<span class="et">— 待存入</span>'
+      : (cdone ? '<span class="claimed">✓ 已領取 Claimed</span>'
+               : `<button class="btn primary sm claimBtn" data-h="${i}" style="padding:5px 11px;font-size:11.5px">💰 pull 領取 Claim</button>`);
+    rows+=`<tr><td>${h.id}</td><td class="right">${NL(h.share)}</td><td class="right">${h.pct}</td><td class="right pos">NT$ ${NL(amt)}</td><td class="right">${claimCell}</td></tr>`;
+  });
+  $('#holdTbl').innerHTML=rows;
+}
+function logEvent(kind, text){
+  const log=$('#evlog'); const empty=log.querySelector('.empty'); if(empty) empty.remove();
+  const time=new Date().toLocaleTimeString('en-GB');
+  log.insertAdjacentHTML('afterbegin', `<div class="ev"><span class="et">[${time}]</span><span class="ek">${kind}</span><span class="ed">${text}</span></div>`);
+}
+$('#depositBtn').onclick=function(){
+  if(rentDeposited){ toast('本期收益池已注入,請各持有人領取 / Already deposited', true); return; }
+  rentDeposited=true;
+  this.textContent='✓ 已存入 150 萬'; this.disabled=true;
+  $('#claimAllBtn').disabled=false;
+  logEvent('RentDeposited', 'period=Q2-2026, amount=NT$1,500,000, by=Manager(0xMgr…01)');
+  renderHoldTbl();
+  $('#distHint').innerHTML='✓ 收益池已注入,可由各持有人 pull 領取或一鍵 ClaimAll / Deposited';
+  $('#distHint').style.color='var(--teal)';
+  toast('🏦 RentDeposited:管理方已存入本期淨租金 NT$150 萬');
+};
+$('#claimAllBtn').onclick=function(){
+  if(!rentDeposited){ toast('請先存入本期淨租金 / Deposit first', true); return; }
+  HOLDERS.forEach((h,i)=>{ if(!claimed[i]){ claimed[i]=true; logEvent('RentClaimed', `holder=${h.id.split('(')[0].trim()}, amount=NT$${NL(rentOf(h.share))}`); } });
+  renderHoldTbl();
+  this.textContent='✓ 全體已領取'; this.disabled=true;
+  toast('💰 ClaimAll:智能合約已依持倉比例 pull-based 撥付全體投資人本期租金');
+};
+// 事件委派:個別持有人 pull 領取(renderHoldTbl 會重建按鈕) / per-holder claim via delegation
+document.addEventListener('click', e=>{
+  const b=e.target.closest('.claimBtn'); if(!b) return;
+  const i=+b.dataset.h; if(claimed[i]) return;
+  claimed[i]=true; const h=HOLDERS[i];
+  logEvent('RentClaimed', `holder=${h.id.split('(')[0].trim()}, amount=NT$${NL(rentOf(h.share))}`);
+  renderHoldTbl();
+  if(HOLDERS.every((_,j)=>claimed[j])){ $('#claimAllBtn').textContent='✓ 全體已領取'; $('#claimAllBtn').disabled=true; }
+  toast('💰 RentClaimed:'+h.id.split('(')[0].trim()+' 已 pull 領取 NT$'+NL(rentOf(h.share)));
+});
+$('#toROI').onclick=()=>{ unlock(4); goStep(4); renderROI(); };
+
+/* ---------------- 頁面五 / Page 5 — ROI 視覺化(SVG 圖表) ---------------- */
+const MY_TOKENS = 100, MY_COST = 100000;          // 您的持倉 100 枚 = NT$10 萬
+const CASH_Y = 1.25, APPR = 3.0;                  // 殖利率 1.25% + 假設增值 3%(情境)
+function renderROI(){
+  // KPI
+  const annualDiv = MY_TOKENS*12.5;               // 100 枚 × NT$12.5 = NT$1,250
+  const kpis=[
+    {kl:'現金殖利率 Cash Yield', kv:CASH_Y.toFixed(2)+'%', kd:'年配 NT$'+NL(annualDiv)+'(100 枚)'},
+    {kl:'假設年增值 Appreciation', kv:APPR.toFixed(1)+'%', kd:'信義精華區情境假設·非保證'},
+    {kl:'總報酬(示意) Total Return', kv:(CASH_Y+APPR).toFixed(2)+'%', kd:'殖利率 + 增值(情境)'},
+    {kl:'您的持倉 Your Holding', kv:NL(MY_TOKENS)+' 枚', kd:'NT$'+NL(MY_COST)+' · 持分 '+(MY_TOKENS/480000*100).toFixed(4)+'%'}
+  ];
+  let kh=''; kpis.forEach(k=>{ kh+=`<div class="kpi"><div class="kl">${k.kl}</div><div class="kv">${k.kv}</div><div class="kd">${k.kd}</div></div>`; });
+  $('#roiKpis').innerHTML=kh;
+  drawDonut(); drawBar(); drawLine();
+}
+// 甜甜圈:持倉占比 / donut — your share vs others
+function drawDonut(){
+  const frac = MY_TOKENS/480000;                  // 極小 → 放大顯示但標注真值
+  const shown = Math.max(frac, 0.04);             // 視覺最小弧 4% 以利辨識(數值另標真值)
+  const R=58, C=2*Math.PI*R, r=70;
+  const dash = C*shown;
+  const svg = `<svg width="170" height="170" viewBox="0 0 170 170">
+    <circle cx="85" cy="85" r="${R}" fill="none" stroke="#34507f" stroke-width="20"/>
+    <circle cx="85" cy="85" r="${R}" fill="none" stroke="#66ffcc" stroke-width="20" stroke-linecap="round"
+      stroke-dasharray="${dash.toFixed(1)} ${(C-dash).toFixed(1)}" transform="rotate(-90 85 85)"
+      style="filter:drop-shadow(0 0 5px #66ffcc)"/>
+    <text x="85" y="80" text-anchor="middle" font-family="ui-monospace,monospace" font-size="20" font-weight="700" fill="#ccff99">${(frac*100).toFixed(4)}%</text>
+    <text x="85" y="100" text-anchor="middle" font-family="ui-monospace,monospace" font-size="11" fill="#8aa0c4">100 / 480,000 枚</text>
+  </svg>`;
+  $('#donutWrap').innerHTML=svg;
+}
+// 長條:ROI 組成 / bar — cash yield + appreciation
+function drawBar(){
+  const W=380,H=150,pad=30, max=5; const scale=(H-pad-20)/max;
+  const items=[['現金殖利率\nCash Yield',CASH_Y,'#66ffcc'],['假設增值\nAppreciation',APPR,'#ffcc66'],['總報酬\nTotal',CASH_Y+APPR,'#ccff99']];
+  let bars='', bw=58, gap=60, x0=50;
+  items.forEach((it,i)=>{
+    const x=x0+i*(bw+gap); const h=it[1]*scale; const y=H-pad-h;
+    bars+=`<rect x="${x}" y="${y}" width="${bw}" height="${h}" rx="6" fill="${it[2]}" style="filter:drop-shadow(0 0 5px ${it[2]})"/>
+      <text x="${x+bw/2}" y="${y-7}" text-anchor="middle" font-family="ui-monospace,monospace" font-size="13" font-weight="700" fill="#ccff99">${it[1].toFixed(2)}%</text>
+      <text x="${x+bw/2}" y="${H-pad+14}" text-anchor="middle" font-family="ui-monospace,monospace" font-size="9.5" fill="#8aa0c4">${it[0].split('\n')[0]}</text>`;
+  });
+  // y 格線 / gridlines
+  let grid='';
+  for(let v=0;v<=max;v++){ const y=H-pad-v*scale; grid+=`<line x1="40" y1="${y}" x2="${W-10}" y2="${y}" stroke="#34507f" stroke-width="1" stroke-dasharray="3 3" opacity=".5"/><text x="34" y="${y+3}" text-anchor="end" font-family="ui-monospace,monospace" font-size="9" fill="#8aa0c4">${v}%</text>`; }
+  $('#barWrap').innerHTML=`<svg width="100%" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">${grid}${bars}</svg>`;
+}
+// 折線:5 年收益累積曲線 / line — cumulative dividends vs total value
+function drawLine(){
+  const W=620,H=200,padL=52,padR=14,padT=14,padB=28;
+  const years=[0,1,2,3,4,5];
+  // 累積配息:每年 MY_TOKENS×12.5 / cumulative dividends
+  const div = years.map(y=> MY_TOKENS*12.5*y);
+  // 總值(含假設增值,複利)− 成本 + 累積配息 / total value w/ 3% appreciation
+  const tot = years.map(y=> Math.round(MY_COST*Math.pow(1+APPR/100,y) - MY_COST + MY_TOKENS*12.5*y));
+  const maxV = Math.max(...tot, ...div, 1);
+  const X = i => padL + i*(W-padL-padR)/(years.length-1);
+  const Y = v => H-padB - (v/maxV)*(H-padT-padB);
+  const path = arr => arr.map((v,i)=>`${i?'L':'M'}${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join(' ');
+  const dots = (arr,col) => arr.map((v,i)=>`<circle cx="${X(i).toFixed(1)}" cy="${Y(v).toFixed(1)}" r="${i===arr.length-1?4:3}" fill="${col}"/>`).join('');
+  // y 軸刻度 / y ticks
+  let grid='';
+  for(let k=0;k<=4;k++){ const v=maxV*k/4; const y=Y(v); grid+=`<line x1="${padL}" y1="${y}" x2="${W-padR}" y2="${y}" stroke="#34507f" stroke-width="1" stroke-dasharray="3 3" opacity=".5"/><text x="${padL-6}" y="${y+3}" text-anchor="end" font-family="ui-monospace,monospace" font-size="9" fill="#8aa0c4">${(v/1000).toFixed(0)}k</text>`; }
+  let xlab=''; years.forEach((y,i)=> xlab+=`<text x="${X(i)}" y="${H-8}" text-anchor="middle" font-family="ui-monospace,monospace" font-size="9.5" fill="#8aa0c4">第${y}年</text>`);
+  const svg=`<svg width="100%" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">
+    ${grid}${xlab}
+    <path d="${path(tot)}" fill="none" stroke="#66ffcc" stroke-width="2.4" stroke-linejoin="round" style="filter:drop-shadow(0 0 4px #66ffcc)"/>
+    <path d="${path(div)}" fill="none" stroke="#ccff99" stroke-width="2.4" stroke-dasharray="6 4" stroke-linejoin="round"/>
+    ${dots(tot,'#66ffcc')}${dots(div,'#ccff99')}
+    <text x="${X(5)}" y="${Y(tot[5])-9}" text-anchor="end" font-family="ui-monospace,monospace" font-size="10" fill="#66ffcc">NT$${NL(tot[5])}</text>
+    <text x="${X(5)}" y="${Y(div[5])+14}" text-anchor="end" font-family="ui-monospace,monospace" font-size="10" fill="#ccff99">NT$${NL(div[5])}</text>
+  </svg>`;
+  $('#lineWrap').innerHTML=svg;
+}
+$('#exportBtn').onclick=function(){
+  const o=this.textContent; this.textContent='⏳ 產生報表中 Generating…'; this.disabled=true;
+  setTimeout(()=>{ const f='信義之星_XYRE_投資人ROI報表_'+ts()+'.pdf';
+    this.textContent='✓ 已導出 '+f; toast('✓ 已導出投資人 ROI 報表 '+f);
+    setTimeout(()=>{ this.textContent=o; this.disabled=false; },2400); },1300);
+};
+
+/* ---------------- 重新開始 / Restart — 還原所有狀態(沿用 RWA 系列 reset 模式) ---------------- */
+$('#resetBtn').onclick=()=>{
+  minted=false; subscribed=false; rentDeposited=false; claimed={}; _maxStep=0;
+  // 頁1 / page 1
+  document.querySelectorAll('.crow').forEach(x=>x.classList.remove('sel'));
+  const u=$('#upload'); u.className='upload disabled'; u.onclick=null;
+  $('#upText').style.display=''; $('#upText').className='big lock';
+  $('#upText').textContent='請先於上方點選「信義之星 一戶(待上架)」標的 / Select the pending asset above first';
+  u.querySelector('.fmt').style.display=''; $('#uprog').style.display='none'; $('#uprogBar').style.width='0';
+  $('#p1hint').textContent='提示 Tip:「信義之星 一戶」為主角標的(80 坪 / 4.8 億 / 月租 60 萬),點選後即可匯入託管與 Oracle 資料並完成估值。';
+  ORACLES1[3]={on:'信託託管憑證 PoR', ov:'待匯入(可代幣化上限 480,000 單位)', ot:'待勾稽', pending:true}; renderOracle1();
+  // 頁2 / page 2
+  $('#covBar').style.width='0'; $('#mintBar').style.width='0'; $('#mintLbl').style.display='none'; $('#txBox').style.display='none';
+  $('#mintBtn').disabled=false; $('#mintBtn').textContent='🚀 模擬 Mint 480,000 XYRE Simulate Mint';
+  $('#mintHint').textContent='PoR 覆蓋率 100% 已通過,可發行 / Reserve verified — ready to mint';
+  $('#toSub').disabled=true; $('#srcQuote').style.display='none';
+  // 頁3 / page 3
+  $('#qtyRange').value=10; $('#subBtn').textContent='✅ 模擬白名單認購 Subscribe(KYC ✓)';
+  $('#subHint').innerHTML='您的錢包 0xRetail…77 已通過 KYC,屬白名單 / KYC-verified';
+  $('#subStatus').textContent='提示:認購後即進入持倉名冊,可於下一頁領取季度租金 / Subscribe then claim quarterly rent';
+  $('#subStatus').style.color=''; $('#xferResult').className='txresult'; $('#xferResult').innerHTML='';
+  // 頁4 / page 4
+  $('#depositBtn').disabled=false; $('#depositBtn').textContent='🏦 管理方存入本期淨租金 150 萬 RentDeposited';
+  $('#claimAllBtn').disabled=true; $('#claimAllBtn').textContent='💰 全體投資人 pull 領取 ClaimAll';
+  $('#distHint').textContent='步驟:① 存入收益池 → ② 各持有人 pull-based 領取 / Deposit then claim'; $('#distHint').style.color='';
+  $('#evlog').innerHTML='<div class="empty">尚無事件 · 請先存入本期淨租金 / No events yet — deposit rent first</div>';
+  goStep(0);
+  toast('↺ 已重新開始,所有狀態已重設 / Restarted');
+};
+
+/* 事件委派:查看託管證明依據(reset 會保留此 handler) / view proof-of-reserve source */
+document.addEventListener('click', e=>{
+  if(e.target && e.target.id==='viewSrc'){ const q=$('#srcQuote'); q.style.display = q.style.display==='block'?'none':'block'; }
+});
+/* 漣漪 / ripple */
+document.addEventListener('click',e=>{
+  const b=e.target.closest('.btn'); if(!b) return;
+  const r=document.createElement('span'); r.className='ripple';
+  const rect=b.getBoundingClientRect(), s=Math.max(rect.width,rect.height);
+  r.style.width=r.style.height=s+'px'; r.style.left=(e.clientX-rect.left-s/2)+'px'; r.style.top=(e.clientY-rect.top-s/2)+'px';
+  b.appendChild(r); setTimeout(()=>r.remove(),600);
+});
+/* 啟動 / boot */
+renderCases();
+renderSpecs();
+renderOracle1();
+goStep(0);
+</script>
+</body>
+</html>

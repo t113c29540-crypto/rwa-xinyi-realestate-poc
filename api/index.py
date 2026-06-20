@@ -820,6 +820,12 @@ def app_ui() -> HTMLResponse:
     return HTMLResponse(_load_static("app.html"))
 
 
+@app.get("/console", response_class=HTMLResponse)
+def chain_console() -> HTMLResponse:
+    """RWA 鏈通 · 操作介面（離線版，內嵌運算快照，免後端）。"""
+    return HTMLResponse(_load_static("console.html"))
+
+
 @app.get("/api/health")
 def health() -> dict[str, Any]:
     return {"ok": True}
